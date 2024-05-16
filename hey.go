@@ -16,9 +16,10 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	gourl "net/url"
@@ -170,16 +171,18 @@ func main() {
 		username, password = match[1], match[2]
 	}
 
-	var bodyAll []byte
+	bodyLines := [][]byte{}
+
 	if *body != "" {
-		bodyAll = []byte(*body)
+		bodyLines = append(bodyLines, []byte(*body))
 	}
+
 	if *bodyFile != "" {
-		slurp, err := ioutil.ReadFile(*bodyFile)
+		var err error
+		bodyLines, err = readFileLines(*bodyFile)
 		if err != nil {
-			errAndExit(err.Error())
+			usageAndExit(err.Error())
 		}
-		bodyAll = slurp
 	}
 
 	var proxyURL *gourl.URL
@@ -195,7 +198,7 @@ func main() {
 	if err != nil {
 		usageAndExit(err.Error())
 	}
-	req.ContentLength = int64(len(bodyAll))
+
 	if username != "" || password != "" {
 		req.SetBasicAuth(username, password)
 	}
@@ -223,7 +226,7 @@ func main() {
 
 	w := &requester.Work{
 		Request:            req,
-		RequestBody:        bodyAll,
+		RequestBody:        bodyLines,
 		N:                  num,
 		C:                  conc,
 		QPS:                q,
@@ -286,4 +289,30 @@ func (h *headerSlice) String() string {
 func (h *headerSlice) Set(value string) error {
 	*h = append(*h, value)
 	return nil
+}
+
+func readFileLines(logfile string) ([][]byte, error) {
+	body := [][]byte{}
+
+	f, err := os.OpenFile(logfile, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	rd := bufio.NewReader(f)
+	for {
+		line, err := rd.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, err
+		}
+		body = append(body, line)
+	}
+
+	return body, nil
 }

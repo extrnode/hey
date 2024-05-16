@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"io"
 	"io/ioutil"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -51,7 +52,7 @@ type Work struct {
 	// Request is the request to be made.
 	Request *http.Request
 
-	RequestBody []byte
+	RequestBody [][]byte
 
 	// RequestFunc is a function to generate requests. If it is nil, then
 	// Request and RequestData are cloned for each request.
@@ -144,7 +145,7 @@ func (b *Work) Finish() {
 	b.report.finalize(total)
 }
 
-func (b *Work) makeRequest(c *http.Client) {
+func (b *Work) makeRequest(c *http.Client, idx int) {
 	s := now()
 	var size int64
 	var code int
@@ -154,7 +155,9 @@ func (b *Work) makeRequest(c *http.Client) {
 	if b.RequestFunc != nil {
 		req = b.RequestFunc()
 	} else {
-		req = cloneRequest(b.Request, b.RequestBody)
+		bodyIdx := idx % len(b.RequestBody)
+		req = cloneRequest(b.Request, b.RequestBody[bodyIdx])
+		req.ContentLength = int64(len(b.RequestBody[bodyIdx]))
 	}
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(info httptrace.DNSStartInfo) {
@@ -217,6 +220,8 @@ func (b *Work) runWorker(client *http.Client, n int) {
 			return http.ErrUseLastResponse
 		}
 	}
+
+	var salt = rand.IntN(len(b.RequestBody)) // random number, but not larger that body len
 	for i := 0; i < n; i++ {
 		// Check if application is stopped. Do not send into a closed channel.
 		select {
@@ -226,7 +231,7 @@ func (b *Work) runWorker(client *http.Client, n int) {
 			if b.QPS > 0 {
 				<-throttle
 			}
-			b.makeRequest(client)
+			b.makeRequest(client, i+salt)
 		}
 	}
 }
