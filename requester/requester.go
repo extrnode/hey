@@ -221,7 +221,12 @@ func (b *Work) runWorker(client *http.Client, n int) {
 		}
 	}
 
-	var salt = rand.IntN(len(b.RequestBody)) // random number, but not larger that body len
+	var salt = len(b.RequestBody)
+	if salt > 0 {
+		// random number, but not larger that body len
+		salt = rand.IntN(salt)
+	}
+
 	for i := 0; i < n; i++ {
 		// Check if application is stopped. Do not send into a closed channel.
 		select {
